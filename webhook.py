@@ -43,32 +43,27 @@ async def stripe_webhook(request: Request):
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
 
-        user_id = session.get("client_reference_id")
-        subscription_id = session.get("subscription")
+        session_id = session["id"]
+        customer_email = session["customer_details"]["email"]
 
-        if not user_id:
-            return {"ok": False, "reason": "No client_reference_id found"}
-
-        if not subscription_id:
-            return {"ok": False, "reason": "No subscription found"}
-
-        subscription = stripe.Subscription.retrieve(
-            subscription_id,
-            expand=["items.data.price"]
+        line_items = stripe.checkout.Session.list_line_items(
+            session_id,
+            limit=1
         )
 
-        price_id = subscription["items"]["data"][0]["price"]["id"]
+        price_id = line_items["data"][0]["price"]["id"]
         plan = PLAN_MAP.get(price_id, "starter")
 
-        supabase.table("profiles").update({
+        result = supabase.table("profiles").update({
             "plan": plan
-        }).eq("id", user_id).execute()
+        }).eq("email", customer_email).execute()
 
         return {
             "ok": True,
-            "user_id": user_id,
+            "email": customer_email,
             "price_id": price_id,
-            "plan": plan
+            "plan": plan,
+            "result": str(result)
         }
 
     return {"ok": True}
